@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import pool from '../config/database.js';
 import { generateToken } from '../utils/jwt.js';
 import { sendVerificationCode } from '../utils/email.js';
@@ -431,6 +431,13 @@ export const resendVerificationCode = async (req, res) => {
     // 이메일 발송
     const emailSent = await sendVerificationCode(email, code);
     if (!emailSent) {
+      // 개발 환경에서는 이메일 발송 실패해도 성공으로 처리 (콘솔에 출력됨)
+      if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+        return res.json({ 
+          message: '인증 코드가 재발송되었습니다. (개발 모드: 콘솔 확인)',
+          warning: '이메일 발송 실패 - 개발 모드에서는 콘솔에 인증 코드가 출력됩니다.'
+        });
+      }
       return res.status(500).json({ error: '이메일 발송에 실패했습니다.' });
     }
 

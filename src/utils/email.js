@@ -42,8 +42,17 @@ export const sendVerificationCode = async (email, code) => {
   try {
     // 이메일 설정 검증
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-      console.error('이메일 설정이 완료되지 않았습니다.');
-      return false;
+      console.error('⚠️ 이메일 설정이 완료되지 않았습니다.');
+      // 이메일 설정이 없으면 콘솔에 인증 코드 출력 (개발/테스트용)
+      console.log('═══════════════════════════════════════');
+      console.log('📧 [이메일 미설정] 인증 코드 (콘솔 출력)');
+      console.log('═══════════════════════════════════════');
+      console.log(`받는 사람: ${email}`);
+      console.log(`인증 코드: ${code}`);
+      console.log('═══════════════════════════════════════');
+      console.log('💡 이메일 발송을 사용하려면 EMAIL_USER와 EMAIL_PASS를 설정하세요.');
+      console.log('💡 docker-compose.override.yml 또는 .env 파일에 설정하세요.');
+      return true; // 이메일 설정이 없어도 성공으로 처리 (콘솔 출력)
     }
 
     // Gmail SMTP 사용 시 Gmail 계정인지 확인

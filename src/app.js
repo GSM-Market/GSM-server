@@ -16,22 +16,45 @@ dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
-// CORS 설정 - 개발 환경에서는 모든 origin 허용
+// CORS 설정 - localhost와 127.0.0.1 모두 허용
 const corsOptions = {
   origin: (origin, callback) => {
-    // 개발 환경에서는 모든 origin 허용
-    if (process.env.NODE_ENV === 'development' || !process.env.FRONTEND_URL) {
+    // origin이 없으면 (같은 origin 요청, Postman 등) 허용
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // localhost 또는 127.0.0.1이면 항상 허용 (가장 먼저 체크)
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      console.log('✅ CORS: localhost/127.0.0.1 허용:', origin);
+      return callback(null, true);
+    }
+    
+    // 개발 환경이거나 FRONTEND_URL이 없으면 모든 origin 허용
+    if (process.env.NODE_ENV === 'development' || !process.env.FRONTEND_URL || process.env.FRONTEND_URL === '') {
+      console.log('✅ CORS: 개발 환경 또는 FRONTEND_URL 없음, 모든 origin 허용:', origin);
+      return callback(null, true);
+    }
+    
+    // 프로덕션: localhost와 127.0.0.1을 동일하게 처리
+    const normalizedOrigin = origin.replace(/127\.0\.0\.1/g, 'localhost');
+    const normalizedFrontendUrl = process.env.FRONTEND_URL.replace(/127\.0\.0\.1/g, 'localhost');
+    
+    // 정확히 일치하면 허용
+    if (normalizedOrigin === normalizedFrontendUrl || origin === process.env.FRONTEND_URL) {
+      console.log('✅ CORS: FRONTEND_URL과 일치, 허용:', origin);
       callback(null, true);
-    } else if (process.env.FRONTEND_URL) {
-      // 프로덕션에서는 지정된 origin만 허용
-      callback(null, process.env.FRONTEND_URL);
     } else {
-      callback(null, true);
+      // 프로덕션에서는 지정된 origin만 허용
+      console.log('❌ CORS: 거부됨:', origin, 'FRONTEND_URL:', process.env.FRONTEND_URL);
+      callback(null, false);
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
 const io = new Server(httpServer, {

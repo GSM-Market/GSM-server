@@ -1,0 +1,10 @@
+# Backend specific ignores
+node_modules/
+.git
+uploads/
+dist
+build
+*.log
+.env
+.env.local
+.env.*
