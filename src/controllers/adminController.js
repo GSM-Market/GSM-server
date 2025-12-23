@@ -33,11 +33,18 @@ export const getAllUsers = async (req, res) => {
       ORDER BY created_at DESC`
     );
 
-    // nickname에서 끝에 붙은 "0" 제거
-    const cleanedUsers = users.map(user => ({
-      ...user,
-      nickname: user.nickname ? user.nickname.replace(/\s*0\s*$/, '').trim() : user.nickname
-    }));
+    // nickname에서 끝에 붙은 "0" 제거 (공백 유무와 관계없이)
+    const cleanedUsers = users.map(user => {
+      if (!user.nickname) return user;
+      // 이름 뒤에 붙은 모든 "0" 제거 (공백 포함/미포함 모두 처리)
+      let cleaned = user.nickname.replace(/\s*0+\s*$/, '').trim();
+      // 혹시 이름 중간에 " 0 " 같은 패턴이 있으면 그것도 제거
+      cleaned = cleaned.replace(/\s+0+\s+/g, ' ').trim();
+      return {
+        ...user,
+        nickname: cleaned
+      };
+    });
 
     res.json({ users: cleanedUsers });
   } catch (error) {

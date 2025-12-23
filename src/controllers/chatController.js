@@ -104,7 +104,8 @@ export const getOrCreateConversation = async (req, res) => {
       const [messages] = await pool.execute(
         `SELECT 
           m.*,
-          u.nickname as sender_nickname
+          u.nickname as sender_nickname,
+          u.avatar_url as sender_avatar_url
         FROM messages m
         JOIN users u ON m.sender_id = u.id
         WHERE m.conversation_id = ?
@@ -114,7 +115,7 @@ export const getOrCreateConversation = async (req, res) => {
 
       // 상대방 정보
       const [seller] = await pool.execute(
-        'SELECT id, nickname, email FROM users WHERE id = ?',
+        'SELECT id, nickname, email, avatar_url FROM users WHERE id = ?',
         [product.user_id]
       );
 
@@ -138,7 +139,7 @@ export const getOrCreateConversation = async (req, res) => {
 
     // 상대방 정보
     const [seller] = await pool.execute(
-      'SELECT id, nickname, email FROM users WHERE id = ?',
+      'SELECT id, nickname, email, avatar_url FROM users WHERE id = ?',
       [product.user_id]
     );
 
@@ -204,13 +205,17 @@ export const getConversation = async (req, res) => {
         CASE 
           WHEN c.buyer_id = ? THEN seller.email
           ELSE buyer.email
-        END as other_user_email
+        END as other_user_email,
+        CASE 
+          WHEN c.buyer_id = ? THEN seller.avatar_url
+          ELSE buyer.avatar_url
+        END as other_user_avatar_url
       FROM conversations c
       JOIN products p ON c.product_id = p.id
       JOIN users buyer ON c.buyer_id = buyer.id
       JOIN users seller ON c.seller_id = seller.id
       WHERE c.id = ? AND (c.buyer_id = ? OR c.seller_id = ?)`;
-      params = [userId, userId, userId, userId, conversation_id, userId, userId];
+      params = [userId, userId, userId, userId, userId, conversation_id, userId, userId];
     } else {
       query = `SELECT 
         c.*,
@@ -230,13 +235,17 @@ export const getConversation = async (req, res) => {
         CASE 
           WHEN c.buyer_id = ? THEN seller.email
           ELSE buyer.email
-        END as other_user_email
+        END as other_user_email,
+        CASE 
+          WHEN c.buyer_id = ? THEN seller.avatar_url
+          ELSE buyer.avatar_url
+        END as other_user_avatar_url
       FROM conversations c
       JOIN products p ON c.product_id = p.id
       JOIN users buyer ON c.buyer_id = buyer.id
       JOIN users seller ON c.seller_id = seller.id
       WHERE c.id = ? AND (c.buyer_id = ? OR c.seller_id = ?)`;
-      params = [userId, userId, userId, conversation_id, userId, userId];
+      params = [userId, userId, userId, userId, conversation_id, userId, userId];
     }
 
     // 채팅방 소유 확인 및 정보 조회
@@ -264,7 +273,8 @@ export const getConversation = async (req, res) => {
           id: conv.other_user_id,
           nickname: conv.other_user_nickname,
           email: conv.other_user_email,
-          student_number: conv.other_user_student_number
+          student_number: conv.other_user_student_number,
+          avatar_url: conv.other_user_avatar_url
         }
       }
     });
@@ -303,6 +313,7 @@ export const getMessages = async (req, res) => {
       `SELECT 
         m.*,
         u.nickname as sender_nickname,
+        u.avatar_url as sender_avatar_url,
         ${hasStudentNumber ? 'u.student_number as sender_student_number' : 'NULL as sender_student_number'}
       FROM messages m
       JOIN users u ON m.sender_id = u.id
@@ -333,6 +344,14 @@ export const sendMessage = async (req, res) => {
 
     if (!content || content.trim().length === 0) {
       return res.status(400).json({ error: '메시지 내용을 입력해주세요.' });
+    }
+
+    // 욕설 필터 검사
+    const { validateMessage } = await import('../utils/profanityFilter.js');
+    const validation = validateMessage(content);
+    if (!validation.valid) {
+      console.log('❌ 욕설 필터 차단 (REST API):', { content: content.substring(0, 50), error: validation.error });
+      return res.status(400).json({ error: validation.error });
     }
 
     // 채팅방 소유 확인
@@ -371,6 +390,7 @@ export const sendMessage = async (req, res) => {
       `SELECT 
         m.*,
         u.nickname as sender_nickname,
+        u.avatar_url as sender_avatar_url,
         ${hasStudentNumberForMessage ? 'u.student_number as sender_student_number' : 'NULL as sender_student_number'}
       FROM messages m
       JOIN users u ON m.sender_id = u.id

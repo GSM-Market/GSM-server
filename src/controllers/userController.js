@@ -6,10 +6,25 @@ export const getMyInfo = async (req, res) => {
   try {
     const userId = req.userId;
 
-    const [users] = await pool.execute(
-      'SELECT id, email, nickname, is_verified, created_at FROM users WHERE id = ?',
-      [userId]
-    );
+    // avatar_url 컬럼 존재 여부 확인
+    let query = 'SELECT id, email, nickname, is_verified, created_at';
+    try {
+      const [columns] = await pool.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = DATABASE() 
+         AND TABLE_NAME = 'users' 
+         AND COLUMN_NAME = 'avatar_url'`
+      );
+      if (columns.length > 0) {
+        query += ', avatar_url';
+      }
+    } catch (error) {
+      console.warn('avatar_url 컬럼 확인 실패, 기본값 사용:', error.message);
+    }
+
+    query += ' FROM users WHERE id = ?';
+
+    const [users] = await pool.execute(query, [userId]);
 
     if (users.length === 0) {
       return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
@@ -110,6 +125,106 @@ export const updateNickname = async (req, res) => {
     });
   } catch (error) {
     console.error('Update nickname error:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+  }
+};
+
+// 프로필 사진 업로드
+export const uploadAvatar = async (req, res) => {
+  try {
+    const userId = req.userId;
+    
+    console.log('📤 uploadAvatar 컨트롤러 호출:', {
+      userId,
+      hasFile: !!req.file,
+      file: req.file ? {
+        filename: req.file.filename,
+        mimetype: req.file.mimetype,
+        size: req.file.size
+      } : null
+    });
+
+    if (!req.file) {
+      console.error('❌ 파일이 없습니다');
+      return res.status(400).json({ error: '이미지 파일을 업로드해주세요.' });
+    }
+
+    // 파일 타입 검증 (jpg, jpeg, png, webp만 허용)
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: 'jpg, jpeg, png, webp 파일만 업로드 가능합니다.' });
+    }
+
+    // 파일 크기 검증 (2~5MB)
+    const fileSizeMB = req.file.size / (1024 * 1024);
+    if (fileSizeMB < 0.1 || fileSizeMB > 5) {
+      return res.status(400).json({ error: '파일 크기는 0.1MB 이상 5MB 이하여야 합니다.' });
+    }
+
+    const avatarUrl = `/uploads/${req.file.filename}`;
+
+    // avatar_url 컬럼 존재 여부 확인 후 업데이트
+    try {
+      const [columns] = await pool.execute(
+        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+         WHERE TABLE_SCHEMA = DATABASE() 
+         AND TABLE_NAME = 'users' 
+         AND COLUMN_NAME = 'avatar_url'`
+      );
+      
+      if (columns.length > 0) {
+        // 기존 프로필 사진이 있으면 파일 삭제 (선택사항)
+        const [users] = await pool.execute(
+          'SELECT avatar_url FROM users WHERE id = ?',
+          [userId]
+        );
+        
+        if (users.length > 0 && users[0].avatar_url) {
+          const fs = await import('fs');
+          const path = await import('path');
+          const { fileURLToPath } = await import('url');
+          const __filename = fileURLToPath(import.meta.url);
+          const __dirname = path.dirname(__filename);
+          const oldFilePath = path.join(__dirname, '../../', users[0].avatar_url);
+          
+          try {
+            if (fs.existsSync(oldFilePath)) {
+              fs.unlinkSync(oldFilePath);
+              console.log(`🗑️ 기존 프로필 사진 삭제: ${oldFilePath}`);
+            }
+          } catch (deleteError) {
+            console.warn('기존 프로필 사진 삭제 실패 (무시):', deleteError.message);
+          }
+        }
+        
+        // avatar_url 업데이트
+        await pool.execute(
+          'UPDATE users SET avatar_url = ? WHERE id = ?',
+          [avatarUrl, userId]
+        );
+      } else {
+        // 컬럼이 없으면 생성 (선택사항, 마이그레이션에서 처리하는 것이 좋음)
+        console.warn('avatar_url 컬럼이 없습니다. 마이그레이션을 실행해주세요.');
+        return res.status(500).json({ error: '프로필 사진 기능이 준비되지 않았습니다.' });
+      }
+    } catch (error) {
+      console.error('Avatar upload error:', error);
+      return res.status(500).json({ error: '프로필 사진 업로드에 실패했습니다.' });
+    }
+
+    // 업데이트된 사용자 정보 조회
+    const [users] = await pool.execute(
+      'SELECT id, email, nickname, avatar_url FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({
+      message: '프로필 사진이 업로드되었습니다.',
+      avatar_url: avatarUrl,
+      user: users[0]
+    });
+  } catch (error) {
+    console.error('Upload avatar error:', error);
     res.status(500).json({ error: '서버 오류가 발생했습니다.' });
   }
 };

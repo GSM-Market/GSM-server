@@ -9,6 +9,7 @@ import userRoutes from './routes/users.js';
 import chatRoutes from './routes/chat.js';
 import favoriteRoutes from './routes/favorites.js';
 import adminRoutes from './routes/admin.js';
+import reportRoutes from './routes/reports.js';
 import { verifyToken } from './utils/jwt.js';
 import pool from './config/database.js';
 
@@ -87,6 +88,17 @@ app.use('/api/users', userRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/favorites', favoriteRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/reports', reportRoutes);
+
+// 디버깅: 등록된 라우트 확인
+console.log('✅ 라우트 등록 완료:');
+console.log('  - /api/auth');
+console.log('  - /api/products');
+console.log('  - /api/users (GET /me, GET /me/products, PUT /me/nickname, POST /me/avatar, DELETE /me)');
+console.log('  - /api/chat');
+console.log('  - /api/favorites');
+console.log('  - /api/admin');
+console.log('  - /api/reports');
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -167,6 +179,15 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // 욕설 필터 검사
+      const { validateMessage } = await import('./utils/profanityFilter.js');
+      const validation = validateMessage(content);
+      if (!validation.valid) {
+        console.log('❌ 욕설 필터 차단:', { content: content.substring(0, 50), error: validation.error });
+        if (callback) callback({ error: validation.error });
+        return;
+      }
+
       // 메시지 저장
       const [result] = await pool.execute(
         'INSERT INTO messages (conversation_id, sender_id, content) VALUES (?, ?, ?)',
@@ -193,6 +214,7 @@ io.on('connection', (socket) => {
         `SELECT 
           m.*,
           u.nickname as sender_nickname,
+          u.avatar_url as sender_avatar_url,
           ${hasStudentNumber ? 'u.student_number as sender_student_number' : 'NULL as sender_student_number'}
         FROM messages m
         JOIN users u ON m.sender_id = u.id

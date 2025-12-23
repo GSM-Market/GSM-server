@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import express from 'express';
 import app, { httpServer } from './src/app.js';
+import { startCleanupScheduler } from './src/utils/cleanup.js';
 
 dotenv.config();
 
@@ -72,6 +73,9 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`🌐 Server is accessible from network: http://0.0.0.0:${PORT}`);
   console.log(`📁 Uploads directory: ${path.join(__dirname, 'uploads')}`);
   console.log(`💬 Socket.io is ready for chat`);
+  
+  // 만료된 미인증 사용자 자동 정리 스케줄러 시작
+  startCleanupScheduler();
   
   // 프로덕션 모드인 경우
   if (process.env.NODE_ENV === 'production') {
